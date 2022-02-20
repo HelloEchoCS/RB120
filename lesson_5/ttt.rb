@@ -1,3 +1,5 @@
+require 'pry'
+
 module Formattable
   def joinor(arr, delimiter=', ', last_word='or')
     part1 = arr[0..arr.count - 2].join(delimiter)
@@ -72,20 +74,21 @@ class Board
     nil
   end
 
-  def identify_wincon(marker)
-    wincons = []
+  def identify_wincon
+    wincons = {}
     WINNING_LINES.each do |line|
       squares =  @squares.values_at(*line)
-      next unless about_to_win?(squares, marker)
-      wincons << squares.select(&:unmarked?).first.location
+      next unless about_to_win?(squares)
+      marker = squares.select(&:marked?).collect(&:marker).first
+      wincons[marker] = [] if wincons[marker] == nil
+      wincons[marker] << squares.select(&:unmarked?).first.location
     end
-    return nil if wincons.empty?
-    wincons.uniq
+    wincons
   end
 
-  def about_to_win?(squares, marker)
+  def about_to_win?(squares)
     markers = squares.select(&:marked?).collect(&:marker)
-    return true if markers.count == 2 && markers.count(marker) == 2 
+    return true if markers.count == 2 && markers.uniq.count == 1 
     false
   end
 
@@ -118,12 +121,72 @@ class Square
 end
 
 class Player
-  attr_reader :marker
+  attr_reader :marker, :board
   attr_accessor :score
 
-  def initialize(marker)
+  def initialize(marker, board)
     @marker = marker
     @score = 0
+    @board = board
+  end
+end
+
+class Human < Player
+  def choose
+    square = nil
+    loop do
+      square = gets.chomp.to_i
+      break if board.unmarked_keys.include?(square)
+      puts "Sorry, that's not a valid choice."
+    end
+
+    board[square] = marker
+  end
+end
+
+class Computer < Player
+  def any_threats?
+    !identify_threats.empty?
+  end
+
+  def any_opportunities?
+    !identify_opportunities.empty?
+  end
+
+  def identify_threats
+    board.identify_wincon.reject {|k,_| k == marker}
+  end
+
+  def identify_opportunities
+    board.identify_wincon.select {|k,_| k == marker}
+  end
+
+  def defense
+    board[identify_threats.values.sample.sample] = marker
+  end
+
+  def offense
+    board[identify_opportunities.values.first.sample] = marker
+  end
+
+  def choose_5
+    board[5] = marker
+  end
+
+  def choose_random
+    board[board.unmarked_keys.sample] = marker
+  end
+
+  def choose
+    if any_opportunities?
+      offense
+    elsif any_threats?
+      defense
+    elsif board.sq5_available?
+      choose_5
+    else
+      choose_random
+    end
   end
 end
 
@@ -139,8 +202,8 @@ class TTTGame
 
   def initialize
     @board = Board.new
-    @human = Player.new(HUMAN_MARKER)
-    @computer = Player.new(COMPUTER_MARKER)
+    @human = Human.new(HUMAN_MARKER, board)
+    @computer = Computer.new(COMPUTER_MARKER, board)
     @current_marker = FIRST_TO_MOVE
   end
 
@@ -172,26 +235,11 @@ class TTTGame
 
   def human_moves
     puts "Choose a square (#{joinor(board.unmarked_keys)}):"
-    square = nil
-    loop do
-      square = gets.chomp.to_i
-      break if board.unmarked_keys.include?(square)
-      puts "Sorry, that's not a valid choice."
-    end
-
-    board[square] = human.marker
+    human.choose
   end
 
   def computer_moves
-    if board.identify_wincon(computer.marker)
-      board[board.identify_wincon(computer.marker).sample] = computer.marker
-    elsif board.identify_wincon(human.marker)
-      board[board.identify_wincon(human.marker).sample] = computer.marker
-    elsif board.sq5_available?
-      board[5] = computer.marker
-    else
-      board[board.unmarked_keys.sample] = computer.marker
-    end
+    computer.choose
   end
 
   def current_player_moves
