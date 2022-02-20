@@ -1,4 +1,12 @@
-require 'pry'
+module Formattable
+  def joinor(arr, delimiter=', ', last_word='or')
+    part1 = arr[0..arr.count - 2].join(delimiter)
+    part2 = delimiter + last_word + ' '
+    return arr.last.to_s if arr.count == 1
+    return arr.join(" #{last_word} ") if arr.count == 2
+    part1 + part2 + arr.last.to_s
+  end
+end
 
 class Board
   WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] +
@@ -87,14 +95,17 @@ class Square
 end
 
 class Player
-  attr_reader :marker
+  attr_reader :marker, :score
 
   def initialize(marker)
     @marker = marker
+    @score = 0
   end
 end
 
 class TTTGame
+  include Formattable
+
   HUMAN_MARKER = "X"
   COMPUTER_MARKER = "O"
   FIRST_TO_MOVE = HUMAN_MARKER
@@ -134,7 +145,7 @@ class TTTGame
   end
 
   def human_moves
-    puts "Choose a square (#{board.unmarked_keys.join(', ')}):"
+    puts "Choose a square (#{joinor(board.unmarked_keys)}):"
     square = nil
     loop do
       square = gets.chomp.to_i
@@ -188,7 +199,7 @@ class TTTGame
     answer == 'y'
   end
 
-  def reset
+  def board_reset
     board.reset
     @current_marker = FIRST_TO_MOVE
     clear
@@ -213,7 +224,7 @@ class TTTGame
       player_move
       display_result
       break unless play_again?
-      reset
+      board_reset
       display_play_again_message
     end
   end
