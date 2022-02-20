@@ -1,4 +1,12 @@
-require 'pry'
+module Formattable
+  def joinor(arr, delimiter=', ', last_word='or')
+    part1 = arr[0..arr.count - 2].join(delimiter)
+    part2 = delimiter + last_word + ' '
+    return arr.last.to_s if arr.count == 1
+    return arr.join(" #{last_word} ") if arr.count == 2
+    part1 + part2 + arr.last.to_s
+  end
+end
 
 class Board
   WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] +
@@ -120,6 +128,8 @@ class Player
 end
 
 class TTTGame
+  include Formattable
+
   HUMAN_MARKER = "X"
   COMPUTER_MARKER = "O"
   FIRST_TO_MOVE = HUMAN_MARKER
@@ -161,7 +171,7 @@ class TTTGame
   end
 
   def human_moves
-    puts "Choose a square (#{board.unmarked_keys.join(', ')}):"
+    puts "Choose a square (#{joinor(board.unmarked_keys)}):"
     square = nil
     loop do
       square = gets.chomp.to_i
