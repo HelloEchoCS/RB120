@@ -17,6 +17,10 @@ class Board
     @squares.keys.select { |key| @squares[key].unmarked? }
   end
 
+  def sq5_available?
+    @squares[5].unmarked?
+  end
+
   # rubocop:disable Metrics/AbcSize
   # rubocop:disable Metrics/MethodLength
   def draw
@@ -60,16 +64,35 @@ class Board
     nil
   end
 
+  def identify_wincon(marker)
+    wincons = []
+    WINNING_LINES.each do |line|
+      squares =  @squares.values_at(*line)
+      next unless about_to_win?(squares, marker)
+      wincons << squares.select(&:unmarked?).first.location
+    end
+    return nil if wincons.empty?
+    wincons.uniq
+  end
+
+  def about_to_win?(squares, marker)
+    markers = squares.select(&:marked?).collect(&:marker)
+    return true if markers.count == 2 && markers.count(marker) == 2 
+    false
+  end
+
   def reset
-    (1..9).each { |key| @squares[key] = Square.new }
+    (1..9).each { |key| @squares[key] = Square.new(key) }
   end
 end
 
 class Square
   INITIAL_MARKER = " "
+  attr_reader :location
   attr_accessor :marker
 
-  def initialize(marker=INITIAL_MARKER)
+  def initialize(location, marker=INITIAL_MARKER)
+    @location = location
     @marker = marker
   end
 
@@ -88,9 +111,11 @@ end
 
 class Player
   attr_reader :marker
+  attr_accessor :score
 
   def initialize(marker)
     @marker = marker
+    @score = 0
   end
 end
 
@@ -98,6 +123,7 @@ class TTTGame
   HUMAN_MARKER = "X"
   COMPUTER_MARKER = "O"
   FIRST_TO_MOVE = HUMAN_MARKER
+  MAX_SCORE = 3
 
   attr_reader :board, :human, :computer
 
@@ -123,6 +149,7 @@ class TTTGame
 
   def display_board
     puts "You're a #{human.marker}. Computer is a #{computer.marker}."
+    puts "Your score: #{human.score}. Computer's score: #{computer.score}."
     puts ""
     board.draw
     puts ""
@@ -146,7 +173,15 @@ class TTTGame
   end
 
   def computer_moves
-    board[board.unmarked_keys.sample] = computer.marker
+    if board.identify_wincon(computer.marker)
+      board[board.identify_wincon(computer.marker).sample] = computer.marker
+    elsif board.identify_wincon(human.marker)
+      board[board.identify_wincon(human.marker).sample] = computer.marker
+    elsif board.sq5_available?
+      board[5] = computer.marker
+    else
+      board[board.unmarked_keys.sample] = computer.marker
+    end
   end
 
   def current_player_moves
@@ -176,10 +211,19 @@ class TTTGame
     end
   end
 
-  def play_again?
+  def update_score
+    case board.winning_marker
+    when human.marker
+      human.score += 1
+    when computer.marker
+      computer.score += 1
+    end
+  end
+
+  def next_round?
     answer = nil
     loop do
-      puts "Would you like to play again? (y/n)"
+      puts "Would you like to play next round? (y/n)"
       answer = gets.chomp.downcase
       break if %w(y n).include? answer
       puts "Sorry, must be y or n"
@@ -188,10 +232,41 @@ class TTTGame
     answer == 'y'
   end
 
-  def reset
+  def score_reset
+    human.score = 0
+    computer.score = 0
+  end
+
+  def board_reset
     board.reset
     @current_marker = FIRST_TO_MOVE
     clear
+  end
+
+  def game_reset
+    score_reset
+    board_reset
+  end
+
+  def grand_winner?
+    human.score == MAX_SCORE || computer.score == MAX_SCORE
+  end
+
+  def announce_grand_winner
+    puts "The Grand Winner Is You!" if human.score == MAX_SCORE
+    puts "The Grand Winner Is Computer!" if computer.score == MAX_SCORE
+  end
+
+  def new_game?
+    answer = nil
+    loop do
+      puts "Would you like to start a new game? (y/n)"
+      answer = gets.chomp.downcase
+      break if %w(y n).include? answer
+      puts "Sorry, must be y or n"
+    end
+
+    answer == 'y'
   end
 
   def display_play_again_message
@@ -207,13 +282,25 @@ class TTTGame
     end
   end
 
-  def main_game
+  def game_round
     loop do
       display_board
       player_move
       display_result
-      break unless play_again?
-      reset
+      update_score
+      break if grand_winner?
+      break unless next_round?
+      board_reset
+      display_play_again_message
+    end
+  end
+
+  def main_game
+    loop do
+      game_round
+      announce_grand_winner if grand_winner?
+      break unless grand_winner? && new_game?
+      game_reset
       display_play_again_message
     end
   end
