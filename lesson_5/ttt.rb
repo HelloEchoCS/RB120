@@ -1,5 +1,3 @@
-require 'pry'
-
 module Formattable
   def joinor(arr, delimiter=', ', last_word='or')
     part1 = arr[0..arr.count - 2].join(delimiter)
@@ -21,6 +19,10 @@ class Board
 
   def []=(num, marker)
     @squares[num].marker = marker
+  end
+
+  def reset_square(num)
+    @squares[num] = Square.new(num)
   end
 
   def unmarked_keys
@@ -121,30 +123,27 @@ class Square
 end
 
 class Player
-  attr_reader :marker, :board
+  attr_reader :marker
   attr_accessor :score
 
-  def initialize(marker, board)
+  def initialize(marker)
     @marker = marker
     @score = 0
+  end
+end
+
+class Human < Player; end
+
+class Computer < Player
+  attr_reader :board
+
+  def initialize(marker, board)
+    super(marker)
     @board = board
   end
 end
 
-class Human < Player
-  def choose
-    square = nil
-    loop do
-      square = gets.chomp.to_i
-      break if board.unmarked_keys.include?(square)
-      puts "Sorry, that's not a valid choice."
-    end
-
-    board[square] = marker
-  end
-end
-
-class Computer < Player
+class NormalComputer < Computer
   def any_threats?
     !identify_threats.empty?
   end
@@ -169,7 +168,7 @@ class Computer < Player
     board[identify_opportunities.values.first.sample] = marker
   end
 
-  def choose_five
+  def choose_middle_square
     board[5] = marker
   end
 
@@ -183,14 +182,72 @@ class Computer < Player
     elsif any_threats?
       defense
     elsif board.sq5_available?
-      choose_five
+      choose_middle_square
     else
       choose_random
     end
   end
 end
 
-class TTTGame
+class UnbeatableComputer < Computer
+  def evaluation(square, is_my_turn)
+    return ai_turn(square) if is_my_turn
+    opponent_turn(square)
+  end
+
+  def ai_turn(square)
+    value = 1000
+    board[square] = marker
+    return terminal_node_value(square) if terminal?
+    board.unmarked_keys.each do |sq|
+      value = [value, evaluation(sq, false)].min
+    end
+    board.reset_square(square)
+    value
+  end
+
+  def opponent_turn(square)
+    value = -1000
+    board[square] = GameEngine::HUMAN_MARKER
+    return terminal_node_value(square) if terminal?
+    board.unmarked_keys.each do |sq|
+      value = [value, evaluation(sq, true)].max
+    end
+    board.reset_square(square)
+    value
+  end
+
+  def terminal_node_value(square)
+    value = if board.winning_marker == marker
+              100
+            elsif board.winning_marker.nil?
+              0
+            else
+              -100
+            end
+    board.reset_square(square)
+    value
+  end
+
+  def terminal?
+    board.someone_won? || board.full?
+  end
+
+  def choose
+    results = {}
+
+    board.unmarked_keys.each do |square|
+      results[square] = evaluation(square, true)
+    end
+
+    possible_moves = results.select do |_, v|
+      v == results.values.max
+    end
+    board[possible_moves.keys.sample] = marker
+  end
+end
+
+class GameEngine
   include Formattable
 
   HUMAN_MARKER = "X"
@@ -202,22 +259,17 @@ class TTTGame
 
   def initialize
     @board = Board.new
-    @human = Human.new(HUMAN_MARKER, board)
-    @computer = Computer.new(COMPUTER_MARKER, board)
+    @human = Human.new(HUMAN_MARKER)
+    @computer = if TTTGame.unbeatable
+                  UnbeatableComputer.new(COMPUTER_MARKER, board)
+                else
+                  NormalComputer.new(COMPUTER_MARKER, board)
+                end
     @current_marker = FIRST_TO_MOVE
   end
 
   def clear
     system 'clear'
-  end
-
-  def display_welcome_message
-    puts "Welcome to Tic Tac Toe!"
-    puts ""
-  end
-
-  def display_goodbye_message
-    puts "Thanks for playing Tic Tac Toe! Goodbye!"
   end
 
   def display_board
@@ -235,10 +287,18 @@ class TTTGame
 
   def human_moves
     puts "Choose a square (#{joinor(board.unmarked_keys)}):"
-    human.choose
+    square = nil
+    loop do
+      square = gets.chomp.to_i
+      break if board.unmarked_keys.include?(square)
+      puts "Sorry, that's not a valid choice."
+    end
+
+    board[square] = human.marker
   end
 
   def computer_moves
+    puts "Calculating..."
     computer.choose
   end
 
@@ -257,8 +317,6 @@ class TTTGame
   end
 
   def display_result
-    display_board
-
     case board.winning_marker
     when human.marker
       puts "You won!"
@@ -311,7 +369,7 @@ class TTTGame
   end
 
   def announce_grand_winner
-    puts "The Grand Winner Is You!" if human.score == MAX_SCORE
+    puts "You are the Grand Winner!" if human.score == MAX_SCORE
     puts "The Grand Winner Is Computer!" if computer.score == MAX_SCORE
   end
 
@@ -335,8 +393,8 @@ class TTTGame
   def player_move
     loop do
       current_player_moves
+      clear_screen_and_display_board
       break if board.someone_won? || board.full?
-      clear_screen_and_display_board if human_turn?
     end
   end
 
@@ -355,6 +413,7 @@ class TTTGame
 
   def main_game
     loop do
+      clear
       game_round
       announce_grand_winner if grand_winner?
       break unless grand_winner? && new_game?
@@ -362,12 +421,78 @@ class TTTGame
       display_play_again_message
     end
   end
+end
 
-  def play
+class TTTGame
+  def initialize
+    @@unbeatable = false
+  end
+
+  def self.unbeatable
+    @@unbeatable
+  end
+
+  def clear
+    system 'clear'
+  end
+
+  def display_welcome_message
+    puts "Welcome to Tic Tac Toe!"
+    puts ""
+  end
+
+  def display_options
     clear
     display_welcome_message
-    main_game
-    display_goodbye_message
+    puts "[1]Start New Game"
+    puts "[2]#{unbeatable_string} Unbeatable AI"
+    puts "[3]Exit"
+    puts ""
+  end
+
+  def select_option
+    selection = nil
+    loop do
+      puts "Please select an option:"
+      selection = gets.chomp
+      break if ['1', '2', '3'].include? selection
+      puts "Sorry, not a valid choice. Please try again."
+    end
+    selection
+  end
+
+  def option_execution(selection)
+    case selection
+    when '1'
+      GameEngine.new.main_game
+    when '2'
+      toggle_unbeatable
+    when '3'
+      display_goodbye_message
+    end
+  end
+
+  def unbeatable_string
+    return 'Disable' if @@unbeatable
+    'Enable'
+  end
+
+  def toggle_unbeatable
+    @@unbeatable = !@@unbeatable
+  end
+
+  def display_goodbye_message
+    puts "Thanks for playing Tic Tac Toe! Goodbye!"
+  end
+
+  def play
+    loop do
+      clear
+      display_options
+      selection = select_option
+      option_execution(selection)
+      break if selection == '3'
+    end
   end
 end
 
