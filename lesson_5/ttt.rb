@@ -3,7 +3,7 @@ require 'pry'
 module Formattable
   def joinor(arr, delimiter=', ', last_word='or')
     part1 = arr[0..arr.count - 2].join(delimiter)
-    part2 = delimiter + last_word + ' '
+    part2 = "#{delimiter}#{last_word} "
     return arr.last.to_s if arr.count == 1
     return arr.join(" #{last_word} ") if arr.count == 2
     part1 + part2 + arr.last.to_s
@@ -77,10 +77,10 @@ class Board
   def identify_wincon
     wincons = {}
     WINNING_LINES.each do |line|
-      squares =  @squares.values_at(*line)
+      squares = @squares.values_at(*line)
       next unless about_to_win?(squares)
       marker = squares.select(&:marked?).collect(&:marker).first
-      wincons[marker] = [] if wincons[marker] == nil
+      wincons[marker] = [] if wincons[marker].nil?
       wincons[marker] << squares.select(&:unmarked?).first.location
     end
     wincons
@@ -88,7 +88,7 @@ class Board
 
   def about_to_win?(squares)
     markers = squares.select(&:marked?).collect(&:marker)
-    return true if markers.count == 2 && markers.uniq.count == 1 
+    return true if markers.count == 2 && markers.uniq.count == 1
     false
   end
 
@@ -154,11 +154,11 @@ class Computer < Player
   end
 
   def identify_threats
-    board.identify_wincon.reject {|k,_| k == marker}
+    board.identify_wincon.reject { |k, _| k == marker }
   end
 
   def identify_opportunities
-    board.identify_wincon.select {|k,_| k == marker}
+    board.identify_wincon.select { |k, _| k == marker }
   end
 
   def defense
@@ -169,7 +169,7 @@ class Computer < Player
     board[identify_opportunities.values.first.sample] = marker
   end
 
-  def choose_5
+  def choose_five
     board[5] = marker
   end
 
@@ -183,7 +183,7 @@ class Computer < Player
     elsif any_threats?
       defense
     elsif board.sq5_available?
-      choose_5
+      choose_five
     else
       choose_random
     end
