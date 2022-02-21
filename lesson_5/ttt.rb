@@ -29,6 +29,10 @@ class Board
     @squares.keys.select { |key| @squares[key].unmarked? }
   end
 
+  def markers
+    @squares.values.select { |s| s.marked? }.collect(&:marker)
+  end
+
   def sq5_available?
     @squares[5].unmarked?
   end
@@ -126,20 +130,32 @@ class Player
   attr_reader :marker
   attr_accessor :score
 
-  def initialize(marker)
-    @marker = marker
+  def initialize
     @score = 0
   end
 end
 
-class Human < Player; end
+class Human < Player
+  DEFAULT_MARKER = "X"
+
+  def initialize
+    super
+    @marker = DEFAULT_MARKER
+  end
+end
 
 class Computer < Player
   attr_reader :board
+  DEFAULT_MARKER = "O"
 
-  def initialize(marker, board)
-    super(marker)
+  def initialize(board)
+    super()
     @board = board
+    @marker = DEFAULT_MARKER
+  end
+
+  def identify_opponent_marker
+    board.markers.reject { |m| m == marker }.first
   end
 end
 
@@ -208,7 +224,7 @@ class UnbeatableComputer < Computer
 
   def opponent_turn(square)
     value = -1000
-    board[square] = GameEngine::HUMAN_MARKER
+    board[square] = identify_opponent_marker
     return terminal_node_value(square) if terminal?
     board.unmarked_keys.each do |sq|
       value = [value, evaluation(sq, true)].max
@@ -249,23 +265,19 @@ end
 
 class GameEngine
   include Formattable
-
-  HUMAN_MARKER = "X"
-  COMPUTER_MARKER = "O"
-  FIRST_TO_MOVE = HUMAN_MARKER
   MAX_SCORE = 3
 
   attr_reader :board, :human, :computer
 
   def initialize
     @board = Board.new
-    @human = Human.new(HUMAN_MARKER)
+    @human = Human.new
     @computer = if TTTGame.unbeatable
-                  UnbeatableComputer.new(COMPUTER_MARKER, board)
+                  UnbeatableComputer.new(board)
                 else
-                  NormalComputer.new(COMPUTER_MARKER, board)
+                  NormalComputer.new(board)
                 end
-    @current_marker = FIRST_TO_MOVE
+    @current_marker = human.marker
   end
 
   def clear
@@ -305,15 +317,15 @@ class GameEngine
   def current_player_moves
     if human_turn?
       human_moves
-      @current_marker = COMPUTER_MARKER
+      @current_marker = computer.marker
     else
       computer_moves
-      @current_marker = HUMAN_MARKER
+      @current_marker = human.marker
     end
   end
 
   def human_turn?
-    @current_marker == HUMAN_MARKER
+    @current_marker == human.marker
   end
 
   def display_result
@@ -355,7 +367,7 @@ class GameEngine
 
   def board_reset
     board.reset
-    @current_marker = FIRST_TO_MOVE
+    @current_marker = human.marker
     clear
   end
 
@@ -385,11 +397,6 @@ class GameEngine
     answer == 'y'
   end
 
-  def display_play_again_message
-    puts "Let's play again!"
-    puts ""
-  end
-
   def player_move
     loop do
       current_player_moves
@@ -407,7 +414,6 @@ class GameEngine
       break if grand_winner?
       break unless next_round?
       board_reset
-      display_play_again_message
     end
   end
 
@@ -418,7 +424,6 @@ class GameEngine
       announce_grand_winner if grand_winner?
       break unless grand_winner? && new_game?
       game_reset
-      display_play_again_message
     end
   end
 end
