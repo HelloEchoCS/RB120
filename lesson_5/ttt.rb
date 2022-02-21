@@ -141,6 +141,10 @@ class Computer < Player
     super(marker)
     @board = board
   end
+
+  def choose_middle_square
+    board[5] = marker
+  end
 end
 
 class NormalComputer < Computer
@@ -166,10 +170,6 @@ class NormalComputer < Computer
 
   def offense
     board[identify_opportunities.values.first.sample] = marker
-  end
-
-  def choose_middle_square
-    board[5] = marker
   end
 
   def choose_random
@@ -233,7 +233,7 @@ class UnbeatableComputer < Computer
     board.someone_won? || board.full?
   end
 
-  def choose
+  def choose_best_outcome
     results = {}
 
     board.unmarked_keys.each do |square|
@@ -245,6 +245,14 @@ class UnbeatableComputer < Computer
     end
     board[possible_moves.keys.sample] = marker
   end
+
+  def choose
+    if board.sq5_available?
+      choose_middle_square
+    else
+      choose_best_outcome
+    end
+  end
 end
 
 class GameEngine
@@ -252,7 +260,6 @@ class GameEngine
 
   HUMAN_MARKER = "X"
   COMPUTER_MARKER = "O"
-  FIRST_TO_MOVE = HUMAN_MARKER
   MAX_SCORE = 3
 
   attr_reader :board, :human, :computer
@@ -265,7 +272,8 @@ class GameEngine
                 else
                   NormalComputer.new(COMPUTER_MARKER, board)
                 end
-    @current_marker = FIRST_TO_MOVE
+    @first_to_move = [HUMAN_MARKER, COMPUTER_MARKER].sample
+    @current_marker = @first_to_move
   end
 
   def clear
@@ -298,7 +306,8 @@ class GameEngine
   end
 
   def computer_moves
-    puts "Calculating..."
+    puts "Computer is thinking..."
+    sleep 1
     computer.choose
   end
 
@@ -355,7 +364,7 @@ class GameEngine
 
   def board_reset
     board.reset
-    @current_marker = FIRST_TO_MOVE
+    @current_marker = @first_to_move
     clear
   end
 
@@ -385,11 +394,6 @@ class GameEngine
     answer == 'y'
   end
 
-  def display_play_again_message
-    puts "Let's play again!"
-    puts ""
-  end
-
   def player_move
     loop do
       current_player_moves
@@ -407,7 +411,6 @@ class GameEngine
       break if grand_winner?
       break unless next_round?
       board_reset
-      display_play_again_message
     end
   end
 
@@ -418,7 +421,6 @@ class GameEngine
       announce_grand_winner if grand_winner?
       break unless grand_winner? && new_game?
       game_reset
-      display_play_again_message
     end
   end
 end
