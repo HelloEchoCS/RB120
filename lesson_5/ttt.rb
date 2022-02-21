@@ -157,6 +157,10 @@ class Computer < Player
   def identify_opponent_marker
     board.markers.reject { |m| m == marker }.first
   end
+
+  def choose_middle_square
+    board[5] = marker
+  end
 end
 
 class NormalComputer < Computer
@@ -182,10 +186,6 @@ class NormalComputer < Computer
 
   def offense
     board[identify_opportunities.values.first.sample] = marker
-  end
-
-  def choose_middle_square
-    board[5] = marker
   end
 
   def choose_random
@@ -249,7 +249,7 @@ class UnbeatableComputer < Computer
     board.someone_won? || board.full?
   end
 
-  def choose
+  def choose_best_outcome
     results = {}
 
     board.unmarked_keys.each do |square|
@@ -260,6 +260,14 @@ class UnbeatableComputer < Computer
       v == results.values.max
     end
     board[possible_moves.keys.sample] = marker
+  end
+
+  def choose
+    if board.sq5_available?
+      choose_middle_square
+    else
+      choose_best_outcome
+    end
   end
 end
 
@@ -310,7 +318,8 @@ class GameEngine
   end
 
   def computer_moves
-    puts "Calculating..."
+    puts "Computer is thinking..."
+    sleep 1
     computer.choose
   end
 
