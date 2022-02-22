@@ -1,10 +1,14 @@
-module Formattable
+module Displayable
   def joinor(arr, delimiter=', ', last_word='or')
     part1 = arr[0..arr.count - 2].join(delimiter)
     part2 = "#{delimiter}#{last_word} "
     return arr.last.to_s if arr.count == 1
     return arr.join(" #{last_word} ") if arr.count == 2
     part1 + part2 + arr.last.to_s
+  end
+
+  def clear
+    system 'clear'
   end
 end
 
@@ -48,7 +52,7 @@ class Board
   end
 
   def markers
-    @squares.values.select { |s| s.marked? }.collect(&:marker)
+    @squares.values.select(&:marked?).collect(&:marker)
   end
 
   def sq5_available?
@@ -162,6 +166,8 @@ class Computer < Player
     @board = board
   end
 
+  private
+
   def identify_opponent_marker
     board.markers.reject { |m| m == marker }.first
   end
@@ -172,6 +178,20 @@ class Computer < Player
 end
 
 class NormalComputer < Computer
+  def choose
+    if any_opportunities?
+      offense
+    elsif any_threats?
+      defense
+    elsif board.sq5_available?
+      choose_middle_square
+    else
+      choose_random
+    end
+  end
+
+  private
+
   def any_threats?
     !identify_threats.empty?
   end
@@ -199,21 +219,19 @@ class NormalComputer < Computer
   def choose_random
     board[board.unmarked_keys.sample] = marker
   end
-
-  def choose
-    if any_opportunities?
-      offense
-    elsif any_threats?
-      defense
-    elsif board.sq5_available?
-      choose_middle_square
-    else
-      choose_random
-    end
-  end
 end
 
 class UnbeatableComputer < Computer
+  def choose
+    if board.sq5_available?
+      choose_middle_square
+    else
+      choose_best_outcome
+    end
+  end
+
+  private
+
   def evaluation(square, is_my_turn)
     return ai_turn(square) if is_my_turn
     opponent_turn(square)
@@ -269,18 +287,14 @@ class UnbeatableComputer < Computer
     end
     board[possible_moves.keys.sample] = marker
   end
-
-  def choose
-    if board.sq5_available?
-      choose_middle_square
-    else
-      choose_best_outcome
-    end
-  end
 end
 
 class Config
-  attr_accessor :unbeatable, :human_marker, :computer_marker, :human_name, :computer_name
+  attr_accessor :unbeatable,
+                :human_marker,
+                :computer_marker,
+                :human_name,
+                :computer_name
 
   def initialize
     @unbeatable = false
@@ -292,11 +306,9 @@ class Config
 end
 
 class GameEngine
-  include Formattable
+  include Displayable
   include Validatable
   MAX_SCORE = 3
-
-  attr_reader :board, :human, :computer, :config
 
   def initialize(config)
     @config = config
@@ -307,28 +319,46 @@ class GameEngine
                 else
                   NormalComputer.new(board)
                 end
-    set_names
-    set_markers
+    load_names_and_markers
     @current_marker = human.marker
   end
 
-  def clear
-    system 'clear'
+  def main_game
+    loop do
+      clear
+      game_round
+      announce_grand_winner if grand_winner?
+      break unless grand_winner? && new_game?
+      game_reset
+    end
   end
 
-  def set_names
+  private
+
+  attr_reader :board, :human, :computer, :config
+
+  def load_names_and_markers
     human.name = config.human_name
     computer.name = config.computer_name
-  end
-
-  def set_markers
     human.marker = config.human_marker
     computer.marker = config.computer_marker
   end
 
+  def display_markers
+    human_marker_str = "#{human.name}[#{human.marker}]"
+    computer_marker_str = "#{computer.name}[#{computer.marker}]"
+    puts "Marker: #{human_marker_str} | #{computer_marker_str}"
+  end
+
+  def display_scores
+    human_score_str = "#{human.name}[#{human.score}]"
+    computer_score_str = "#{computer.name}[#{computer.score}]"
+    puts "Score:  #{human_score_str} | #{computer_score_str}"
+  end
+
   def display_board
-    puts "Marker: #{human.name}[#{human.marker}] | #{computer.name}[#{computer.marker}]"
-    puts "Score:  #{human.name}[#{human.score}] | #{computer.name}[#{computer.score}]"
+    display_markers
+    display_scores
     puts ""
     board.draw
     puts ""
@@ -459,29 +489,29 @@ class GameEngine
       board_reset
     end
   end
-
-  def main_game
-    loop do
-      clear
-      game_round
-      announce_grand_winner if grand_winner?
-      break unless grand_winner? && new_game?
-      game_reset
-    end
-  end
 end
 
 class TTTGame
+  include Displayable
   include Validatable
-  attr_reader :config
 
   def initialize
     @config = Config.new
   end
 
-  def clear
-    system 'clear'
+  def play
+    loop do
+      clear
+      display_options
+      selection = select_option
+      option_execution(selection)
+      break if selection == '4'
+    end
   end
+
+  private
+
+  attr_reader :config
 
   def display_welcome_message
     puts "Welcome to Tic Tac Toe!"
@@ -491,14 +521,14 @@ class TTTGame
   def display_options
     clear
     display_welcome_message
-    menu_items.each { |k,v| puts "[#{k}] #{v}" }
+    menu_items.each { |k, v| puts "[#{k}] #{v}" }
     puts ""
   end
 
   def menu_items
     { '1' => "Start New Game",
       '2' => "#{unbeatable_string} Unbeatable AI",
-      '3' => "Customise Player Profiles",
+      '3' => "Customize Player Profiles",
       '4' => "Exit" }
   end
 
@@ -520,13 +550,14 @@ class TTTGame
     when '2'
       toggle_unbeatable
     when '3'
-      customise_markers
+      customize_markers
     when '4'
       display_goodbye_message
     end
   end
 
-  def customise_markers
+  def customize_markers
+    clear
     change_human_name
     change_human_marker
     change_computer_name
@@ -536,7 +567,7 @@ class TTTGame
   def change_human_marker
     marker = nil
     loop do
-      puts "Please enter your one-character marker (current: #{config.human_marker})"
+      puts "Please enter your marker (current: #{config.human_marker})"
       marker = gets.chomp.upcase
       break if marker.length == 1 && !start_with_space?(marker)
       puts "Invalid marker, must be one-character long."
@@ -589,7 +620,8 @@ class TTTGame
   def request_computer_marker
     marker = nil
     loop do
-      puts "Please enter #{config.computer_name}'s one-character marker (current: #{config.computer_marker})"
+      name = config.computer_name
+      puts "Please enter #{name}'s marker (current: #{config.computer_marker})"
       marker = gets.chomp.upcase
       break if marker.length == 1 && !start_with_space?(marker)
       puts "Invalid marker, must be one-character long."
@@ -608,16 +640,6 @@ class TTTGame
 
   def display_goodbye_message
     puts "Thanks for playing Tic Tac Toe! Goodbye!"
-  end
-
-  def play
-    loop do
-      clear
-      display_options
-      selection = select_option
-      option_execution(selection)
-      break if selection == '4'
-    end
   end
 end
 
