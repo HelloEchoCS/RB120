@@ -8,6 +8,24 @@ module Formattable
   end
 end
 
+module Validatable
+  def valid?(input, criteria=nil)
+    return false if input.to_s.empty?
+    return criteria.include? input if criteria
+    true
+  end
+
+  def start_with_space?(input)
+    input[0] == " "
+  end
+end
+
+class String
+  def red
+    "\e[31m#{self}\e[0m"
+  end
+end
+
 class Board
   WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] +
                   [[1, 4, 7], [2, 5, 8], [3, 6, 9]] +
@@ -40,15 +58,15 @@ class Board
   # rubocop:disable Metrics/AbcSize
   # rubocop:disable Metrics/MethodLength
   def draw
-    puts "     |     |"
+    puts "1    |2    |3"
     puts "  #{@squares[1]}  |  #{@squares[2]}  |  #{@squares[3]}"
     puts "     |     |"
     puts "-----+-----+-----"
-    puts "     |     |"
+    puts "4    |5    |6"
     puts "  #{@squares[4]}  |  #{@squares[5]}  |  #{@squares[6]}"
     puts "     |     |"
     puts "-----+-----+-----"
-    puts "     |     |"
+    puts "7    |8    |9"
     puts "  #{@squares[7]}  |  #{@squares[8]}  |  #{@squares[9]}"
     puts "     |     |"
     puts ""
@@ -114,7 +132,7 @@ class Square
   end
 
   def to_s
-    @marker
+    @marker.red
   end
 
   def unmarked?
@@ -127,31 +145,21 @@ class Square
 end
 
 class Player
-  attr_reader :marker
-  attr_accessor :score
+  attr_accessor :score, :marker, :name
 
   def initialize
     @score = 0
   end
 end
 
-class Human < Player
-  DEFAULT_MARKER = "X"
-
-  def initialize
-    super
-    @marker = DEFAULT_MARKER
-  end
-end
+class Human < Player; end
 
 class Computer < Player
   attr_reader :board
-  DEFAULT_MARKER = "O"
 
   def initialize(board)
     super()
     @board = board
-    @marker = DEFAULT_MARKER
   end
 
   def identify_opponent_marker
@@ -271,20 +279,36 @@ class UnbeatableComputer < Computer
   end
 end
 
-class GameEngine
-  include Formattable
-  MAX_SCORE = 3
-
-  attr_reader :board, :human, :computer
+class Config
+  attr_accessor :unbeatable, :human_marker, :computer_marker, :human_name, :computer_name
 
   def initialize
+    @unbeatable = false
+    @human_marker = "X"
+    @computer_marker = "O"
+    @human_name = "Human"
+    @computer_name = "Computer"
+  end
+end
+
+class GameEngine
+  include Formattable
+  include Validatable
+  MAX_SCORE = 3
+
+  attr_reader :board, :human, :computer, :config
+
+  def initialize(config)
+    @config = config
     @board = Board.new
     @human = Human.new
-    @computer = if TTTGame.unbeatable
+    @computer = if config.unbeatable
                   UnbeatableComputer.new(board)
                 else
                   NormalComputer.new(board)
                 end
+    set_names
+    set_markers
     @current_marker = human.marker
   end
 
@@ -292,9 +316,19 @@ class GameEngine
     system 'clear'
   end
 
+  def set_names
+    human.name = config.human_name
+    computer.name = config.computer_name
+  end
+
+  def set_markers
+    human.marker = config.human_marker
+    computer.marker = config.computer_marker
+  end
+
   def display_board
-    puts "You're a #{human.marker}. Computer is a #{computer.marker}."
-    puts "Your score: #{human.score}. Computer's score: #{computer.score}."
+    puts "Marker: #{human.name}[#{human.marker}] | #{computer.name}[#{computer.marker}]"
+    puts "Score:  #{human.name}[#{human.score}] | #{computer.name}[#{computer.score}]"
     puts ""
     board.draw
     puts ""
@@ -310,7 +344,7 @@ class GameEngine
     square = nil
     loop do
       square = gets.chomp.to_i
-      break if board.unmarked_keys.include?(square)
+      break if valid?(square, board.unmarked_keys)
       puts "Sorry, that's not a valid choice."
     end
 
@@ -318,7 +352,7 @@ class GameEngine
   end
 
   def computer_moves
-    puts "Computer is thinking..."
+    puts "#{computer.name} is thinking..."
     sleep 1
     computer.choose
   end
@@ -362,7 +396,7 @@ class GameEngine
     loop do
       puts "Would you like to play next round? (y/n)"
       answer = gets.chomp.downcase
-      break if %w(y n).include? answer
+      break if valid?(answer, %w(y n))
       puts "Sorry, must be y or n"
     end
 
@@ -391,7 +425,7 @@ class GameEngine
 
   def announce_grand_winner
     puts "You are the Grand Winner!" if human.score == MAX_SCORE
-    puts "The Grand Winner Is Computer!" if computer.score == MAX_SCORE
+    puts "The Grand Winner Is #{computer.name}!" if computer.score == MAX_SCORE
   end
 
   def new_game?
@@ -399,7 +433,7 @@ class GameEngine
     loop do
       puts "Would you like to start a new game? (y/n)"
       answer = gets.chomp.downcase
-      break if %w(y n).include? answer
+      break if valid?(answer, %w(y n))
       puts "Sorry, must be y or n"
     end
 
@@ -438,12 +472,11 @@ class GameEngine
 end
 
 class TTTGame
-  def initialize
-    @@unbeatable = false
-  end
+  include Validatable
+  attr_reader :config
 
-  def self.unbeatable
-    @@unbeatable
+  def initialize
+    @config = Config.new
   end
 
   def clear
@@ -458,10 +491,15 @@ class TTTGame
   def display_options
     clear
     display_welcome_message
-    puts "[1]Start New Game"
-    puts "[2]#{unbeatable_string} Unbeatable AI"
-    puts "[3]Exit"
+    menu_items.each { |k,v| puts "[#{k}] #{v}" }
     puts ""
+  end
+
+  def menu_items
+    { '1' => "Start New Game",
+      '2' => "#{unbeatable_string} Unbeatable AI",
+      '3' => "Customise Player Profiles",
+      '4' => "Exit" }
   end
 
   def select_option
@@ -469,7 +507,7 @@ class TTTGame
     loop do
       puts "Please select an option:"
       selection = gets.chomp
-      break if ['1', '2', '3'].include? selection
+      break if valid?(selection, menu_items.keys)
       puts "Sorry, not a valid choice. Please try again."
     end
     selection
@@ -478,21 +516,94 @@ class TTTGame
   def option_execution(selection)
     case selection
     when '1'
-      GameEngine.new.main_game
+      GameEngine.new(config).main_game
     when '2'
       toggle_unbeatable
     when '3'
+      customise_markers
+    when '4'
       display_goodbye_message
     end
   end
 
+  def customise_markers
+    change_human_name
+    change_human_marker
+    change_computer_name
+    change_computer_marker
+  end
+
+  def change_human_marker
+    marker = nil
+    loop do
+      puts "Please enter your one-character marker (current: #{config.human_marker})"
+      marker = gets.chomp.upcase
+      break if marker.length == 1 && !start_with_space?(marker)
+      puts "Invalid marker, must be one-character long."
+    end
+    config.human_marker = marker
+  end
+
+  def change_computer_marker
+    marker = nil
+    loop do
+      marker = request_computer_marker
+      break unless marker == config.human_marker
+      puts "Computer marker cannot be the same as yours."
+    end
+    config.computer_marker = marker
+  end
+
+  def change_human_name
+    name = nil
+    loop do
+      puts "Please enter your name (current: #{config.human_name})"
+      name = gets.chomp
+      break if valid?(name)
+      puts "Invalid name, please try again."
+    end
+    config.human_name = name
+  end
+
+  def change_computer_name
+    name = nil
+    loop do
+      name = request_computer_name
+      break unless name == config.human_name
+      puts "Computer name cannot be the same as yours."
+    end
+    config.computer_name = name
+  end
+
+  def request_computer_name
+    name = nil
+    loop do
+      puts "Please enter computer's name (current: #{config.computer_name})"
+      name = gets.chomp
+      break if valid?(name)
+      puts "Invalid name, please try again."
+    end
+    name
+  end
+
+  def request_computer_marker
+    marker = nil
+    loop do
+      puts "Please enter #{config.computer_name}'s one-character marker (current: #{config.computer_marker})"
+      marker = gets.chomp.upcase
+      break if marker.length == 1 && !start_with_space?(marker)
+      puts "Invalid marker, must be one-character long."
+    end
+    marker
+  end
+
   def unbeatable_string
-    return 'Disable' if @@unbeatable
+    return 'Disable' if config.unbeatable
     'Enable'
   end
 
   def toggle_unbeatable
-    @@unbeatable = !@@unbeatable
+    config.unbeatable = !config.unbeatable
   end
 
   def display_goodbye_message
@@ -505,7 +616,7 @@ class TTTGame
       display_options
       selection = select_option
       option_execution(selection)
-      break if selection == '3'
+      break if selection == '4'
     end
   end
 end
